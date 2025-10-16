@@ -1,0 +1,659 @@
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Code Challenge Exam</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Use Inter font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+        .code-input {
+            /* !important used here to ensure font/padding/spacing is consistent */
+            font-family: 'Consolas', 'Monaco', monospace !important;
+            background-color: #1e293b !important; /* Slate 800 */
+            color: #e2e8f0 !important; /* Light text */
+            padding: 12px !important;
+            border-radius: 6px !important;
+            min-height: 100px;
+            white-space: pre-wrap !important;
+            overflow-x: auto !important;
+        }
+        /* Style for code blocks in the results review */
+        .result-code-block {
+            padding: 8px !important;
+            font-size: 0.875rem !important; /* text-sm */
+            font-family: 'Consolas', 'Monaco', monospace !important;
+            white-space: pre-wrap !important;
+        }
+        /* Custom scrollbar for better look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header class="text-center mb-8">
+        <h1 class="text-4xl font-extrabold text-blue-700">The Python Code Challenge</h1>
+        <p class="text-gray-600 mt-2">Test your knowledge of the first 9 weeks!</p>
+    </header>
+
+    <!-- Main App Content -->
+    <div id="app"></div>
+
+    <!-- Firebase setup and script logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANT: Global variables are provided by the canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // LLM API Constants
+        const apiKey = ""; 
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+        let db, auth;
+        let userId = 'anonymous';
+
+        if (firebaseConfig) {
+            setLogLevel('Debug');
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            console.log("Firebase initialized.");
+        } else {
+            console.error("Firebase configuration is missing. Results will not be saved.");
+        }
+
+        const questions = [
+            // print() (2 Qs)
+            { id: 1, topic: "print()", prompt: "Write the Python code to display the text: Hello Class.", answer: "print('Hello Class')", type: "code", hint: "Use single quotes for the string, e.g., print('text')" },
+            { id: 2, topic: "print()", prompt: "Write the Python code to display the result of 15 / 3.", answer: "print(5.0)", type: "code", hint: "A standard division results in a float." },
+            // comments (2 Qs)
+            { id: 3, topic: "comments", prompt: "Write a single-line comment that says the phrase: Temporary fix.", answer: "# Temporary fix", type: "code", hint: "Comments start with a specific symbol and require a space immediately after the symbol." },
+            { id: 4, topic: "comments", prompt: "Write a docstring (multi-line comment) containing only the word: Purpose.", answer: '"""Purpose"""', type: "code", hint: "Ensure no whitespace is included between the word and the docstring symbols." },
+            // variables (3 Qs)
+            { id: 5, topic: "variables", prompt: "Assign the integer 50 to a variable named limit.", answer: "limit = 50", type: "code", hint: "Variable name = value" },
+            { id: 6, topic: "variables", prompt: "If `a = 'A'`, `b = a`, and `a = 'B'`, what value does `b` hold?", answer: "A", type: "text", hint: "Remember variables store values, not references for primitives." },
+            { id: 7, topic: "variables", prompt: "Write the code to create a variable named `student_id` and assign it the integer value 9001.", answer: "student_id = 9001", type: "code", hint: "Use snake_case for variable names." },
+            // Data types (4 Qs)
+            { id: 8, topic: "Data Types (int)", prompt: "Write the literal value 123 as an integer type.", answer: "123", type: "text", hint: "A whole number." },
+            { id: 9, topic: "Data Types (str)", prompt: "Write the literal value Python as a string type (make sure to include the required quotes).", answer: "'Python'", type: "text", hint: "Any text surrounded by quotes." },
+            { id: 10, topic: "Data Types (float)", prompt: "Write the literal value 3.14 as a float type.", answer: "3.14", type: "text", hint: "A number with a decimal point." },
+            { id: 11, topic: "Data Types (bool)", prompt: "What is the result of the comparison: `10 <= 10` (True or False)?", answer: "True", type: "text", hint: "Equality is included." },
+            // casting (2 Qs)
+            { id: 12, topic: "casting", prompt: "Write the expression to cast the string 5.5 into a float.", answer: "float('5.5')", type: "code", hint: "Use the appropriate type function." },
+            { id: 13, topic: "casting", prompt: "Write the expression to cast the boolean `False` into an integer.", answer: "int(False)", type: "code", hint: "Use the function for casting to an integer type." },
+            // operators (5 Qs)
+            { id: 14, topic: "operators (arithmetic)", prompt: "What is the result of the Python expression: `2 ** 4`?", answer: "16", type: "text", hint: "Exponentiation operator." },
+            { id: 15, topic: "operators (arithmetic)", prompt: "What is the result of the Python expression: `17 % 5`?", answer: "2", type: "text", hint: "Modulo operator." },
+            { id: 16, topic: "operators (assignment)", prompt: "Using an assignment operator, write the code to subtract 3 from `points`.", answer: "points -= 3", type: "code", hint: "Shortcut operator for subtraction." },
+            { id: 17, topic: "operators (assignment)", prompt: "Using an assignment operator, divide the value of `total` by 2.", answer: "total /= 2", type: "code", hint: "Shortcut operator for division." },
+            { id: 18, topic: "operators (comparison)", prompt: "Write the comparison expression for 'value is greater than or equal to 100'.", answer: "value >= 100", type: "code", hint: "Two symbols needed." },
+            // if, elif, and else (1 Q)
+            { id: 19, topic: "if, elif, else", prompt: "Write a complete `if/elif/else` structure that checks for three conditions on the variable `score` (e.g., score > 90, score > 70, otherwise). Include the necessary keywords, colons, and one line of indentation (`pass`) inside each block.", answer: "if score > 90:\n    pass\nelif score > 70:\n    pass\nelse:\n    pass", type: "code", hint: "Ensure exact syntax including colons and 4-space indentation for the `pass` statement." },
+            // user input (1 Q)
+            { id: 20, topic: "user input", prompt: "Write the Python code to prompt the user with the message: Enter ID: and store the result in `user_id`.", answer: "user_id = input('Enter ID:')", type: "code", hint: "The function can take a prompt string." }
+        ];
+
+        let state = {
+            currentStep: 'info', // 'info', 'quiz', 'review', 'result'
+            currentQuestionIndex: 0,
+            firstName: '',
+            lastName: '',
+            studentId: '', // ADDED: Student ID field
+            userAnswers: Array(questions.length).fill(''),
+            score: 0,
+            message: '',
+            isSaving: false,
+            incorrectAnswers: [], // Stores details of missed questions
+            reviewSummary: '', // To hold the generated review text
+            isGeneratingReview: false // Loading state for the LLM call
+        };
+
+        // --- Core UI Rendering ---
+        const appDiv = document.getElementById('app');
+
+        function render() {
+            let content = '';
+            switch (state.currentStep) {
+                case 'info':
+                    content = renderInfoStep();
+                    break;
+                case 'quiz':
+                    content = renderQuizStep();
+                    break;
+                case 'review':
+                    content = renderReviewStep();
+                    break;
+                case 'result':
+                    content = renderResultStep();
+                    break;
+            }
+            appDiv.innerHTML = content;
+            // Re-attach listeners for dynamically generated content
+            attachListeners();
+        }
+
+        function renderInfoStep() {
+            return `
+                <div class="space-y-6">
+                    <div class="p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h2 class="text-2xl font-semibold text-blue-700 mb-3">Welcome to the Code Challenge!</h2>
+                        <p class="text-blue-600">This exam consists of 20 questions covering all topics from the first 9 weeks.</p>
+                        <ul class="list-disc list-inside mt-3 text-sm text-blue-600 space-y-1">
+                            <li><span class="font-bold">Important:</span> Your answers are **case-sensitive** and must match the expected Python syntax exactly.</li>
+                            <li><span class="font-bold">Tip:</span> Pay attention to **spaces** and **punctuation**.</li>
+                            <li>You can go back and change your answers at any time before submitting.</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <label for="firstName" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                        <input type="text" id="firstName" value="${state.firstName}" class="w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., Alex">
+                    </div>
+                    <div>
+                        <label for="lastName" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                        <input type="text" id="lastName" value="${state.lastName}" class="w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., Johnson">
+                    </div>
+                    <!-- START: ADDED STUDENT ID FIELD -->
+                    <div>
+                        <label for="studentId" class="block text-sm font-medium text-gray-700 mb-1">Student ID</label>
+                        <input type="text" id="studentId" value="${state.studentId}" class="w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 9001">
+                    </div>
+                    <!-- END: ADDED STUDENT ID FIELD -->
+                    <button id="startQuizBtn" class="w-full py-3 px-4 bg-green-600 text-white font-semibold rounded-lg shadow-lg hover:bg-green-700 transition duration-150 ease-in-out disabled:opacity-50">
+                        Start Exam
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderQuizStep() {
+            const q = questions[state.currentQuestionIndex];
+            // Use innerText for textarea to avoid HTML encoding issues, but ensure newlines are respected
+            const currentAnswer = state.userAnswers[state.currentQuestionIndex].replace(/\r\n|\r|\n/g, '\n');
+            const progress = ((state.currentQuestionIndex + 1) / questions.length) * 100;
+
+            return `
+                <div class="space-y-8">
+                    <!-- Progress Bar -->
+                    <div class="relative pt-1">
+                        <div class="flex mb-2 items-center justify-between">
+                            <div>
+                                <span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-blue-600 bg-blue-200">
+                                    Question ${state.currentQuestionIndex + 1} of ${questions.length}
+                                </span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xs font-semibold inline-block text-blue-600">
+                                    ${Math.round(progress)}% Complete
+                                </span>
+                            </div>
+                        </div>
+                        <div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-200">
+                            <div style="width:${progress}%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-500"></div>
+                        </div>
+                    </div>
+
+                    <!-- Question Card -->
+                    <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-inner">
+                        <p class="text-lg font-medium text-gray-700 mb-4">
+                            <span class="font-bold text-blue-600">[Topic: ${q.topic}]</span> ${q.prompt}
+                        </p>
+                        <div class="bg-gray-100 p-3 rounded-md text-sm text-gray-500">
+                            <p class="font-semibold mb-1">Hint:</p>
+                            <p>${q.hint}</p>
+                        </div>
+                    </div>
+
+                    <!-- Answer Input -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Your Python Code/Answer:</label>
+                        <textarea id="answerInput" class="code-input w-full p-3 border-none resize-none focus:outline-none" rows="4" placeholder="Type your answer or code snippet here...">
+${currentAnswer}</textarea>
+                    </div>
+
+                    <!-- Navigation Buttons -->
+                    <div class="flex justify-between items-center pt-4">
+                        <button id="prevBtn" class="py-2 px-6 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 transition duration-150 ease-in-out disabled:opacity-50">
+                            Previous
+                        </button>
+
+                        <button id="nextBtn" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150 ease-in-out">
+                            ${state.currentQuestionIndex === questions.length - 1 ? 'Go to Review Screen' : 'Next'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderReviewStep() {
+            const answeredCount = questions.filter((_, i) => state.userAnswers[i] !== '').length;
+
+            let reviewItems = questions.map((q, index) => {
+                const userAnswer = state.userAnswers[index];
+                const status = userAnswer ? 'Answered' : 'Skipped';
+
+                return `
+                    <div class="p-4 border-b border-gray-200 hover:bg-gray-50 flex justify-between items-center transition duration-150">
+                        <div class="flex-1 min-w-0 pr-4">
+                            <p class="text-sm font-semibold text-gray-800">${q.id}. [${q.topic}] ${q.prompt}</p>
+                            <p class="text-xs text-gray-500 mt-1 truncate">Your Answer: <code class="font-mono text-gray-700 bg-gray-100 px-1 py-0.5 rounded">${userAnswer || 'No Answer Provided'}</code></p>
+                        </div>
+                        <div class="ml-4 flex-shrink-0 flex items-center">
+                             <button data-index="${index}" class="edit-btn text-sm font-medium text-blue-600 hover:text-blue-800 transition duration-150 mr-3">Edit</button>
+                             <span class="px-3 py-1 text-xs font-medium rounded-full ${userAnswer ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${status}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+
+            return `
+                <div class="space-y-6">
+                    <h2 class="text-3xl font-bold text-center text-blue-700">Review Your Exam</h2>
+                    <p class="text-center text-gray-600">You have answered **${answeredCount}** out of **${questions.length}** questions. Review your answers below, and click **Final Submission** when ready.</p>
+
+                    <div class="border border-gray-300 rounded-lg overflow-hidden bg-white shadow-md">
+                        ${reviewItems}
+                    </div>
+
+                    <div class="flex justify-between items-center pt-4">
+                        <button id="backToQuizBtn" class="py-2 px-6 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 transition duration-150 ease-in-out">
+                            Back to Questions
+                        </button>
+
+                        <button id="submitBtn" class="py-3 px-8 bg-red-600 text-white font-bold rounded-lg shadow-xl hover:bg-red-700 transition duration-150 ease-in-out">
+                            Final Submission & Grade
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderResultStep() {
+            const score = state.score;
+            const total = questions.length;
+            const percentage = ((score / total) * 100).toFixed(1);
+
+            let resultClass, message;
+            if (percentage >= 90) {
+                resultClass = 'bg-green-100 border-green-400 text-green-700';
+                message = 'Outstanding job! You crushed the challenge!';
+            } else if (percentage >= 70) {
+                resultClass = 'bg-yellow-100 border-yellow-400 text-yellow-700';
+                message = 'Great work! You have a solid understanding of the material.';
+            } else {
+                resultClass = 'bg-red-100 border-red-400 text-red-700';
+                message = 'Good effort! Review the materials and try again.';
+            }
+            
+            // LLM-Powered Review Feature HTML
+            let reviewHtml = '';
+            if (state.incorrectAnswers.length > 0) {
+                reviewHtml = `
+                    <div id="llm-review-section" class="mt-8 pt-6 border-t border-indigo-200 space-y-4 text-left">
+                        <h3 class="text-2xl font-bold text-indigo-700">Personalized Study Review ✨</h3>
+                        <p class="text-gray-600">The Gemini model can generate a targeted review based on the topics you missed:</p>
+                        
+                        <button id="generateReviewBtn" 
+                                class="w-full py-3 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-lg hover:bg-indigo-700 transition duration-150 ease-in-out disabled:opacity-50"
+                                ${state.isGeneratingReview ? 'disabled' : ''}>
+                            ${state.isGeneratingReview ? 
+                                '<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating Conceptual Review...' 
+                                : 
+                                'Generate Conceptual Review for Missed Topics'
+                            }
+                        </button>
+                        
+                        ${state.reviewSummary ? `
+                            <div class="p-6 bg-indigo-50 border border-indigo-300 rounded-xl text-gray-800 shadow-inner">
+                                <pre class="font-sans text-sm whitespace-pre-wrap">${state.reviewSummary}</pre>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="text-center space-y-6">
+                    <h2 class="text-3xl font-bold text-blue-700">Exam Complete!</h2>
+                    <!-- Score Card -->
+                    <div class="p-8 ${resultClass} rounded-xl border-4 shadow-lg">
+                        <p class="text-5xl font-extrabold mb-2">${percentage}%</p>
+                        <p class="text-2xl font-semibold">${score} out of ${total} Correct</p>
+                        <p class="mt-4 text-lg">${message}</p>
+                    </div>
+
+                    <p class="text-gray-600 mt-4">Your result for **${state.firstName} ${state.lastName} (ID: ${state.studentId})** has been securely recorded.</p>
+
+                    <!-- Breakdown of Incorrect Answers -->
+                    ${state.incorrectAnswers.length > 0 ? `
+                        <div class="mt-8 text-left">
+                            <h3 class="text-2xl font-bold text-red-600 mb-4">${state.incorrectAnswers.length} Mistakes to Review</h3>
+                            <div class="space-y-4">
+                                ${state.incorrectAnswers.map(mistake => `
+                                    <div class="p-4 bg-white border border-red-300 rounded-lg shadow-sm">
+                                        <p class="text-md font-semibold text-gray-800 mb-2">Q${mistake.id}. ${mistake.prompt}</p>
+                                        <div class="space-y-2 text-sm">
+                                            <p class="font-medium text-red-600">Your Answer:</p>
+                                            <code class="block result-code-block !bg-red-50 !text-red-800 border border-red-200 rounded">${mistake.userAnswer}</code>
+                                            <p class="font-medium text-green-600">Correct Answer:</p>
+                                            <code class="block result-code-block !bg-green-50 !text-green-800 border border-green-200 rounded">${mistake.correctAnswer}</code>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : `
+                        <p class="mt-8 text-xl font-semibold text-green-600">Perfect Score! No mistakes to review.</p>
+                    `}
+                    
+                    <!-- INSERT LLM REVIEW SECTION HERE -->
+                    ${reviewHtml}
+
+                    <div class="mt-6">
+                        <button onclick="window.location.reload()" class="py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-lg hover:bg-blue-700 transition duration-150 ease-in-out">
+                            Start New Attempt
+                        </button>
+                    </div>
+                    ${state.isSaving ? '<p class="text-sm text-yellow-600 mt-4 flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Saving data...</p>' : ''}
+                </div>
+            `;
+        }
+        
+        // --- LLM API Function ---
+        async function generateReviewSummary() {
+            if (state.incorrectAnswers.length === 0 || state.isGeneratingReview) return;
+
+            state.isGeneratingReview = true;
+            state.reviewSummary = ''; // Clear previous summary
+            render();
+
+            // 1. Determine the missed topics
+            // Get unique topics from the incorrect answers array
+            const topics = [...new Set(state.incorrectAnswers.map(a => a.topic))];
+            const missedTopicsList = topics.join(', ');
+
+            const systemPrompt = "You are a concise, helpful Python tutor. Your goal is to provide a brief, easy-to-understand conceptual review. Format the output using markdown headers for each topic.";
+            
+            const userQuery = `The student missed questions on the following Python topics: ${missedTopicsList}. Write a conceptual review summary (under 200 words total) covering the core concepts of these specific topics to help the student study. Include a brief, simple code example for each topic you cover.`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            let resultText = "Error: Could not retrieve review summary. Please try again.";
+
+            // Exponential backoff retry logic
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                    const result = await response.json();
+                    const candidate = result.candidates?.[0];
+
+                    if (candidate && candidate.content?.parts?.[0]?.text) {
+                        resultText = candidate.content.parts[0].text;
+                        break; // Success, exit retry loop
+                    } else {
+                        throw new Error("Invalid response structure from API.");
+                    }
+
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed:`, error);
+                    if (i < 2) {
+                        // Wait for 1s, 2s, 4s...
+                        await new Promise(resolve => setTimeout(resolve, 2 ** i * 1000));
+                    } else {
+                        break; // Max retries reached
+                    }
+                }
+            }
+
+            state.reviewSummary = resultText;
+            state.isGeneratingReview = false;
+            render();
+        }
+
+        // --- Event Handlers & Logic ---
+
+        function attachListeners() {
+            if (state.currentStep === 'info') {
+                const startBtn = document.getElementById('startQuizBtn');
+                const firstNameInput = document.getElementById('firstName');
+                const lastNameInput = document.getElementById('lastName');
+                const studentIdInput = document.getElementById('studentId'); // Added studentId input
+
+                const updateButtonState = () => {
+                    // Start button requires all three fields to be non-empty
+                    startBtn.disabled = !(state.firstName.length > 0 && state.lastName.length > 0 && state.studentId.length > 0);
+                };
+
+                // Initial check
+                updateButtonState();
+                firstNameInput.oninput = (e) => { state.firstName = e.target.value.trim(); updateButtonState(); };
+                lastNameInput.oninput = (e) => { state.lastName = e.target.value.trim(); updateButtonState(); };
+                studentIdInput.oninput = (e) => { state.studentId = e.target.value.trim(); updateButtonState(); }; // Listener for Student ID
+
+                startBtn.onclick = () => {
+                    if (state.firstName && state.lastName && state.studentId) {
+                        state.currentStep = 'quiz';
+                        render();
+                    }
+                };
+
+            } else if (state.currentStep === 'quiz') {
+                const answerInput = document.getElementById('answerInput');
+                const prevBtn = document.getElementById('prevBtn');
+                const nextBtn = document.getElementById('nextBtn');
+
+                // MODIFICATION: Removed .trim() here to support multi-line answers (like Q19)
+                answerInput.oninput = (e) => {
+                    state.userAnswers[state.currentQuestionIndex] = e.target.value;
+                };
+
+                // Navigation logic
+                prevBtn.disabled = state.currentQuestionIndex === 0;
+                prevBtn.onclick = () => {
+                    // Save current answer before moving
+                    state.userAnswers[state.currentQuestionIndex] = answerInput.value;
+
+                    if (state.currentQuestionIndex > 0) {
+                        state.currentQuestionIndex--;
+                        render();
+                    }
+                };
+
+                nextBtn.onclick = () => {
+                    // Save current answer before moving
+                    state.userAnswers[state.currentQuestionIndex] = answerInput.value;
+
+                    if (state.currentQuestionIndex < questions.length - 1) {
+                        state.currentQuestionIndex++;
+                        render();
+                    } else if (state.currentQuestionIndex === questions.length - 1) {
+                        // Transition to review screen
+                        state.currentStep = 'review';
+                        render();
+                    }
+                };
+
+            } else if (state.currentStep === 'review') {
+                document.getElementById('backToQuizBtn').onclick = () => {
+                    state.currentQuestionIndex = 0;
+                    state.currentStep = 'quiz';
+                    render();
+                };
+
+                document.getElementById('submitBtn').onclick = submitExam;
+
+                // Edit button logic to jump back to a specific question
+                document.querySelectorAll('.edit-btn').forEach(button => {
+                    button.onclick = (e) => {
+                        const index = parseInt(e.target.dataset.index);
+                        state.currentQuestionIndex = index;
+                        state.currentStep = 'quiz';
+                        render();
+                    };
+                });
+            } else if (state.currentStep === 'result' && state.incorrectAnswers.length > 0) {
+                const generateBtn = document.getElementById('generateReviewBtn');
+                if (generateBtn) {
+                    generateBtn.onclick = generateReviewSummary;
+                }
+            }
+        }
+
+        async function authenticateAndGetUserId() {
+            if (!auth) return 'anonymous-unconfigured'; // Handle missing config case
+
+            try {
+                if (initialAuthToken) {
+                    const userCredential = await signInWithCustomToken(auth, initialAuthToken);
+                    return userCredential.user.uid;
+                } else {
+                    const userCredential = await signInAnonymously(auth);
+                    return userCredential.user.uid;
+                }
+            } catch (error) {
+                console.error("Firebase authentication failed:", error);
+                // Fallback to a random ID if sign-in fails
+                return crypto.randomUUID();
+            }
+        }
+
+        async function saveResult(score, total) {
+            if (!db) {
+                state.message = "Cannot save result: Firebase is not configured.";
+                console.error(state.message);
+                return;
+            }
+
+            state.isSaving = true;
+            // Re-render to show saving indicator
+            render();
+
+            userId = await authenticateAndGetUserId();
+
+            const examResult = {
+                appId: appId,
+                userId: userId,
+                firstName: state.firstName,
+                lastName: state.lastName,
+                studentId: state.studentId, // ADDED: Student ID saved here
+                score: score,
+                total: total,
+                percentage: ((score / total) * 100),
+                timestamp: serverTimestamp(),
+            };
+
+            const collectionPath = `/artifacts/${appId}/public/data/python_exams`;
+
+            // Exponential backoff logic for retries
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const docRef = await addDoc(collection(db, collectionPath), examResult);
+                    console.log("Document written with ID: ", docRef.id);
+                    state.message = "Result saved successfully!";
+                    state.isSaving = false;
+                    render(); // Final render after save
+                    return;
+                } catch (e) {
+                    console.error("Error adding document, retrying in", 2 ** i * 1000, "ms:", e);
+                    if (i < 2) {
+                        await new Promise(resolve => setTimeout(resolve, 2 ** i * 1000));
+                    } else {
+                        state.message = "Failed to save result after multiple retries.";
+                        state.isSaving = false;
+                        render();
+                        break;
+                    }
+                }
+            }
+        }
+
+        function submitExam() {
+            // 1. Grading Logic
+            let correctCount = 0;
+            const total = questions.length;
+            // Reset incorrect answers array and review summary
+            state.incorrectAnswers = [];
+            state.reviewSummary = ''; 
+
+            questions.forEach((q, index) => {
+                // IMPORTANT: Use .trim() on comparison to remove surrounding whitespace, 
+                // but internal newlines/spaces (for Q19) are preserved and compared.
+                const userAnswer = state.userAnswers[index].trim();
+                const correctAnswer = q.answer.trim();
+
+                if (userAnswer === correctAnswer) {
+                    correctCount++;
+                } else {
+                    // Capture mistake details
+                    state.incorrectAnswers.push({
+                        id: q.id,
+                        topic: q.topic,
+                        prompt: q.prompt,
+                        // Ensure displayed answer preserves original formatting better than just .trim()
+                        userAnswer: state.userAnswers[index] || '— No Answer Provided —',
+                        correctAnswer: q.answer
+                    });
+                }
+            });
+
+            state.score = correctCount;
+
+            // 2. Change step to result
+            state.currentStep = 'result';
+            render();
+
+            // 3. Save result asynchronously
+            saveResult(correctCount, total);
+        }
+
+        // Initial check and render
+        document.addEventListener('DOMContentLoaded', render);
+    </script>
+</div>
+</body>
+</html>
